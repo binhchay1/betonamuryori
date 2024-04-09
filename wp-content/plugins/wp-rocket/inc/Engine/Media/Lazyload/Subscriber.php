@@ -17,8 +17,9 @@ use WP_Rocket\Event_Management\Subscriber_Interface;
  */
 class Subscriber implements Subscriber_Interface {
 	use RegexTrait;
+	use CanLazyloadTrait;
 
-	const SCRIPT_VERSION = '17.5';
+	const SCRIPT_VERSION = '17.8.3';
 
 	/**
 	 * Options_Data instance
@@ -74,20 +75,21 @@ class Subscriber implements Subscriber_Interface {
 	 */
 	public static function get_subscribed_events() {
 		return [
-			'wp_footer'                                => [
+			'wp_footer'                                 => [
 				[ 'insert_lazyload_script', PHP_INT_MAX ],
 				[ 'insert_youtube_thumbnail_script', PHP_INT_MAX ],
 			],
-			'wp_head'                                  => [ 'insert_nojs_style', PHP_INT_MAX ],
-			'wp_enqueue_scripts'                       => [ 'insert_youtube_thumbnail_style', PHP_INT_MAX ],
-			'rocket_buffer'                            => [ 'lazyload', 18 ],
-			'rocket_lazyload_html'                     => 'lazyload_responsive',
-			'init'                                     => 'lazyload_smilies',
-			'wp'                                       => 'deactivate_lazyload_on_specific_posts',
-			'wp_lazy_loading_enabled'                  => [ 'maybe_disable_core_lazyload', 10, 2 ],
-			'rocket_lazyload_excluded_attributes'      => 'add_exclusions',
-			'rocket_lazyload_excluded_src'             => 'add_exclusions',
-			'rocket_lazyload_iframe_excluded_patterns' => 'add_exclusions',
+			'wp_head'                                   => [ 'insert_nojs_style', PHP_INT_MAX ],
+			'wp_enqueue_scripts'                        => [ 'insert_youtube_thumbnail_style', PHP_INT_MAX ],
+			'rocket_buffer'                             => [ 'lazyload', 18 ],
+			'rocket_lazyload_html'                      => 'lazyload_responsive',
+			'init'                                      => 'lazyload_smilies',
+			'wp'                                        => 'deactivate_lazyload_on_specific_posts',
+			'wp_lazy_loading_enabled'                   => [ 'maybe_disable_core_lazyload', 10, 2 ],
+			'rocket_lazyload_excluded_attributes'       => 'add_exclusions',
+			'rocket_lazyload_excluded_src'              => 'add_exclusions',
+			'rocket_lazyload_iframe_excluded_patterns'  => 'add_exclusions',
+			'rocket_lazyload_exclude_youtube_thumbnail' => 'add_exclusions',
 		];
 	}
 
@@ -237,11 +239,24 @@ class Subscriber implements Subscriber_Interface {
 		 */
 		$thumbnail_resolution = apply_filters( 'rocket_lazyload_youtube_thumbnail_resolution', $thumbnail_resolution );
 
+		/**
+		 * Extension from the thumbnail from Youtube video.
+		 *
+		 * @param string $extension extension from the thumbnail from Youtube video.
+		 * @returns string
+		 */
+		$extension = apply_filters( 'rocket_lazyload_youtube_thumbnail_extension', 'jpg' );
+
+		if ( ! is_string( $extension ) || ! in_array( $extension, [ 'jpg', 'webp' ], true ) ) {
+			$extension = 'jpg';
+		}
+
 		$this->assets->insertYoutubeThumbnailScript(
 			[
 				'resolution' => $thumbnail_resolution,
 				'lazy_image' => (bool) $this->options->get( 'lazyload' ),
 				'native'     => $this->is_native_images(),
+				'extension'  => $extension,
 			]
 		);
 	}
@@ -291,59 +306,6 @@ class Subscriber implements Subscriber_Interface {
 				'responsive_embeds' => current_theme_supports( 'responsive-embeds' ),
 			]
 		);
-	}
-
-	/**
-	 * Checks if lazyload should be applied
-	 *
-	 * @since 3.3
-	 *
-	 * @return bool
-	 */
-	private function should_lazyload() {
-		if (
-			rocket_get_constant( 'REST_REQUEST', false )
-			||
-			rocket_get_constant( 'DONOTLAZYLOAD', false )
-			||
-			rocket_get_constant( 'DONOTROCKETOPTIMIZE', false )
-		) {
-			return false;
-		}
-
-		if (
-			is_admin()
-			||
-			is_feed()
-			||
-			is_preview()
-		) {
-			return false;
-		}
-
-		if (
-			is_search()
-			&&
-			// This filter is documented in inc/classes/Buffer/class-tests.php.
-			! (bool) apply_filters( 'rocket_cache_search', false )
-		) {
-			return false;
-		}
-
-		// Exclude Page Builders editors.
-		$excluded_parameters = [
-			'fl_builder',
-			'et_fb',
-			'ct_builder',
-		];
-
-		foreach ( $excluded_parameters as $excluded ) {
-			if ( isset( $_GET[ $excluded ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**
@@ -471,7 +433,7 @@ class Subscriber implements Subscriber_Interface {
 	 * @return bool
 	 */
 	public function maybe_disable_core_lazyload( $value, $tag_name ) {
-		if ( false === $value ) {
+		if ( false === $value || rocket_bypass() ) {
 			return $value;
 		}
 
@@ -494,7 +456,11 @@ class Subscriber implements Subscriber_Interface {
 	 * @param array $exclusions Array of excluded patterns.
 	 * @return array
 	 */
-	public function add_exclusions( array $exclusions ) : array {
+	public function add_exclusions( $exclusions ): array {
+		if ( ! is_array( $exclusions ) ) {
+			$exclusions = [];
+		}
+
 		$exclude_lazyload = $this->options->get( 'exclude_lazyload', [] );
 
 		if ( empty( $exclude_lazyload ) ) {

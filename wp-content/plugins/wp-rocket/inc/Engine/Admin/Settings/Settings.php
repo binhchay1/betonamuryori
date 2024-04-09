@@ -223,8 +223,7 @@ class Settings {
 		$input['minify_css'] = ! empty( $input['minify_css'] ) ? 1 : 0;
 		$input['minify_js']  = ! empty( $input['minify_js'] ) ? 1 : 0;
 
-		$input['minify_concatenate_css'] = ! empty( $input['minify_concatenate_css'] ) ? 1 : 0;
-		$input['minify_concatenate_js']  = ! empty( $input['minify_concatenate_js'] ) ? 1 : 0;
+		$input['minify_concatenate_js'] = ! empty( $input['minify_concatenate_js'] ) ? 1 : 0;
 
 		$input['defer_all_js']     = ! empty( $input['defer_all_js'] ) ? 1 : 0;
 		$input['exclude_defer_js'] = ! empty( $input['exclude_defer_js'] ) ? rocket_sanitize_textarea_field( 'exclude_defer_js', $input['exclude_defer_js'] ) : [];
@@ -344,19 +343,6 @@ class Settings {
 		// Option : fonts to preload.
 		$input['preload_fonts'] = ! empty( $input['preload_fonts'] ) ? $this->sanitize_fonts( $input['preload_fonts'] ) : [];
 
-		// Options : CloudFlare.
-		$input['do_cloudflare']               = ! empty( $input['do_cloudflare'] ) ? 1 : 0;
-		$input['cloudflare_email']            = isset( $input['cloudflare_email'] ) ? sanitize_email( $input['cloudflare_email'] ) : '';
-		$input['cloudflare_api_key']          = isset( $input['cloudflare_api_key'] ) ? sanitize_text_field( $input['cloudflare_api_key'] ) : '';
-		$input['cloudflare_zone_id']          = isset( $input['cloudflare_zone_id'] ) ? sanitize_text_field( $input['cloudflare_zone_id'] ) : '';
-		$input['cloudflare_devmode']          = isset( $input['cloudflare_devmode'] ) && is_numeric( $input['cloudflare_devmode'] ) ? (int) $input['cloudflare_devmode'] : 0;
-		$input['cloudflare_auto_settings']    = ( isset( $input['cloudflare_auto_settings'] ) && is_numeric( $input['cloudflare_auto_settings'] ) ) ? (int) $input['cloudflare_auto_settings'] : 0;
-		$input['cloudflare_protocol_rewrite'] = ! empty( $input['cloudflare_protocol_rewrite'] ) ? 1 : 0;
-
-		if ( defined( 'WP_ROCKET_CF_API_KEY' ) ) {
-			$input['cloudflare_api_key'] = WP_ROCKET_CF_API_KEY;
-		}
-
 		// Options: Sucuri cache. And yeah, there's a typo, but now it's too late to fix ^^'.
 		$input['sucury_waf_cache_sync'] = ! empty( $input['sucury_waf_cache_sync'] ) ? 1 : 0;
 
@@ -450,7 +436,7 @@ class Settings {
 			$notices = array_merge( (array) $wp_settings_errors, (array) get_transient( 'settings_errors' ) );
 			$notices = array_filter(
 				$notices,
-				function( $error ) {
+				function ( $error ) {
 					if ( ! $error || ! is_array( $error ) ) {
 						return false;
 					}
@@ -486,7 +472,7 @@ class Settings {
 	 * @param string $key   Array key to check.
 	 * @return int
 	 */
-	public function sanitize_checkbox( $array, $key ) {
+	public function sanitize_checkbox( $array, $key ) { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.arrayFound
 		return isset( $array[ $key ] ) && ! empty( $array[ $key ] ) ? 1 : 0;
 	}
 
@@ -534,7 +520,7 @@ class Settings {
 
 		return array_unique(
 			array_map(
-				function( $url ) {
+				function ( $url ) {
 					return '//' . wp_parse_url( $url, PHP_URL_HOST );
 				},
 				$urls
@@ -692,8 +678,20 @@ class Settings {
 	 */
 	private function sanitize_cdn_cnames( array $cnames ) {
 		$cnames = array_map(
-			function( $cname ) {
-				return filter_var( $cname, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME );
+			function ( $cname ) {
+				$cname = trim( $cname );
+
+				if ( empty( $cname ) ) {
+					return false;
+				}
+
+				$cname_parts = get_rocket_parse_url( rocket_add_url_protocol( $cname ) );
+
+				if ( false === filter_var( $cname_parts['host'], FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME ) ) {
+					return false;
+				}
+
+				return $cname_parts['scheme'] . '://' . $cname_parts['host'] . $cname_parts['path'];
 			},
 			$cnames
 		);

@@ -220,6 +220,7 @@ class Assets {
 			'resolution' => 'hqdefault',
 			'lazy_image' => false,
 			'native'     => true,
+			'extension'  => 'jpg',
 		];
 
 		$allowed_resolutions = [
@@ -250,11 +251,14 @@ class Assets {
 
 		$args = wp_parse_args( $args, $defaults );
 
-		$image = '<img src="https://i.ytimg.com/vi/ID/' . $args['resolution'] . '.jpg" alt="" width="' . $allowed_resolutions[ $args['resolution'] ]['width'] . '" height="' . $allowed_resolutions[ $args['resolution'] ]['height'] . '">';
+		$extension_uri = 'webp' === $args['extension'] ? 'vi_webp' : 'vi';
+
+		$image_url = 'https://i.ytimg.com/' . $extension_uri . '/ID/' . $args['resolution'] . '.' . $args['extension'];
+
+		$image = '<img src="' . $image_url . '" alt="" width="' . $allowed_resolutions[ $args['resolution'] ]['width'] . '" height="' . $allowed_resolutions[ $args['resolution'] ]['height'] . '">';
 
 		if ( isset( $args['lazy_image'] ) && $args['lazy_image'] ) {
 			$attributes = 'alt="" width="' . $allowed_resolutions[ $args['resolution'] ]['width'] . '" height="' . $allowed_resolutions[ $args['resolution'] ]['height'] . '"';
-			$image_url  = 'https://i.ytimg.com/vi/ID/' . $args['resolution'] . '.jpg';
 
 			$image = '<img data-lazy-src="' . $image_url . '" ' . $attributes . '><noscript><img src="' . $image_url . '" ' . $attributes . '></noscript>';
 
@@ -263,7 +267,20 @@ class Assets {
 			}
 		}
 
-		return "<script>function lazyLoadThumb(e){var t='{$image}',a='<button class=\"play\" aria-label=\"play Youtube video\"></button>';return t.replace(\"ID\",e)+a}function lazyLoadYoutubeIframe(){var e=document.createElement(\"iframe\"),t=\"ID?autoplay=1\";t+=0===this.parentNode.dataset.query.length?'':'&'+this.parentNode.dataset.query;e.setAttribute(\"src\",t.replace(\"ID\",this.parentNode.dataset.src)),e.setAttribute(\"frameborder\",\"0\"),e.setAttribute(\"allowfullscreen\",\"1\"),e.setAttribute(\"allow\", \"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\"),this.parentNode.parentNode.replaceChild(e,this.parentNode)}document.addEventListener(\"DOMContentLoaded\",function(){var e,t,p,a=document.getElementsByClassName(\"rll-youtube-player\");for(t=0;t<a.length;t++)e=document.createElement(\"div\"),e.setAttribute(\"data-id\",a[t].dataset.id),e.setAttribute(\"data-query\", a[t].dataset.query),e.setAttribute(\"data-src\", a[t].dataset.src),e.innerHTML=lazyLoadThumb(a[t].dataset.id),a[t].appendChild(e),p=e.querySelector('.play'),p.onclick=lazyLoadYoutubeIframe});</script>";
+		/**
+		 * Filters the patterns excluded from lazyload for youtube thumbnails.
+		 *
+		 * @param array $excluded_patterns Array of excluded patterns.
+		 */
+		$excluded_patterns = apply_filters( 'rocket_lazyload_exclude_youtube_thumbnail', [] );
+
+		if ( ! is_array( $excluded_patterns ) ) {
+			$excluded_patterns = [];
+		}
+
+		$excluded_patterns = wp_json_encode( $excluded_patterns );
+
+		return "<script>function lazyLoadThumb(e,alt,l){var t='{$image}',a='<button class=\"play\" aria-label=\"play Youtube video\"></button>';if(l){t=t.replace('data-lazy-','');t=t.replace('loading=\"lazy\"','');t=t.replace(/<noscript>.*?<\/noscript>/g,'');}t=t.replace('alt=\"\"','alt=\"'+alt+'\"');return t.replace(\"ID\",e)+a}function lazyLoadYoutubeIframe(){var e=document.createElement(\"iframe\"),t=\"ID?autoplay=1\";t+=0===this.parentNode.dataset.query.length?\"\":\"&\"+this.parentNode.dataset.query;e.setAttribute(\"src\",t.replace(\"ID\",this.parentNode.dataset.src)),e.setAttribute(\"frameborder\",\"0\"),e.setAttribute(\"allowfullscreen\",\"1\"),e.setAttribute(\"allow\",\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\"),this.parentNode.parentNode.replaceChild(e,this.parentNode)}document.addEventListener(\"DOMContentLoaded\",function(){var exclusions={$excluded_patterns};var e,t,p,u,l,a=document.getElementsByClassName(\"rll-youtube-player\");for(t=0;t<a.length;t++)(e=document.createElement(\"div\")),(u='{$image_url}'),(u=u.replace('ID',a[t].dataset.id)),(l=exclusions.some(exclusion=>u.includes(exclusion))),e.setAttribute(\"data-id\",a[t].dataset.id),e.setAttribute(\"data-query\",a[t].dataset.query),e.setAttribute(\"data-src\",a[t].dataset.src),(e.innerHTML=lazyLoadThumb(a[t].dataset.id,a[t].dataset.alt,l)),a[t].appendChild(e),(p=e.querySelector(\".play\")),(p.onclick=lazyLoadYoutubeIframe)});</script>";
 	}
 
 	/**

@@ -44,13 +44,15 @@ class Subscriber implements Subscriber_Interface {
 	 */
 	public static function get_subscribed_events() {
 		return [
-			'admin_notices'               => [
+			'admin_notices'                 => [
 				[ 'maybe_display_preload_notice' ],
 			],
-			'rocket_options_changed'      => 'preload_homepage',
-			'switch_theme'                => 'preload_homepage',
-			'rocket_after_clean_used_css' => 'preload_homepage',
-			'rocket_input_sanitize'       => 'sanitize_options',
+			'rocket_options_changed'        => 'preload_homepage',
+			'switch_theme'                  => 'preload_homepage',
+			'rocket_after_clean_used_css'   => 'preload_homepage',
+			'rocket_domain_options_changed' => 'preload_homepage',
+			'rocket_input_sanitize'         => 'sanitize_options',
+			'wp_rocket_upgrade'             => [ 'maybe_clean_cron', 15, 2 ],
 		];
 	}
 
@@ -79,7 +81,7 @@ class Subscriber implements Subscriber_Interface {
 	 *
 	 * @return array
 	 */
-	public function sanitize_options( $input ) : array {
+	public function sanitize_options( $input ): array {
 		if ( empty( $input['preload_excluded_uri'] ) ) {
 			$input['preload_excluded_uri'] = [];
 
@@ -89,5 +91,19 @@ class Subscriber implements Subscriber_Interface {
 		$input['preload_excluded_uri'] = rocket_sanitize_textarea_field( 'preload_excluded_uri', $input['preload_excluded_uri'] );
 
 		return $input;
+	}
+
+	/**
+	 * Unlock all preload URL on update.
+	 *
+	 * @param string $wp_rocket_version Latest WP Rocket version.
+	 * @param string $actual_version Installed WP Rocket version.
+	 */
+	public function maybe_clean_cron( $wp_rocket_version, $actual_version ) {
+		if ( version_compare( $actual_version, '3.12.5', '<' ) ) {
+			return;
+		}
+
+		wp_clear_scheduled_hook( 'rocket_preload_revert_old_in_progress_rows' );
 	}
 }

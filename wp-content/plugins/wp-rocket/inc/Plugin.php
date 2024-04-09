@@ -5,9 +5,15 @@ namespace WP_Rocket;
 use Imagify_Partner;
 use WP_Rocket\Dependencies\League\Container\Container;
 use WP_Rocket\Admin\Options;
+use WP_Rocket\Engine\Admin\API\ServiceProvider as APIServiceProvider;
+use WP_Rocket\Engine\Common\ExtractCSS\ServiceProvider as CommmonExtractCSSServiceProvider;
+use WP_Rocket\Engine\Media\Lazyload\CSS\ServiceProvider as LazyloadCSSServiceProvider;
+use WP_Rocket\Engine\Media\Lazyload\CSS\Admin\ServiceProvider as AdminLazyloadCSSServiceProvider;
 use WP_Rocket\Event_Management\Event_Manager;
+use WP_Rocket\Logger\ServiceProvider as LoggerServiceProvider;
 use WP_Rocket\ThirdParty\Hostings\HostResolver;
 use WP_Rocket\Addon\ServiceProvider as AddonServiceProvider;
+use WP_Rocket\Addon\Cloudflare\ServiceProvider as CloudflareServiceProvider;
 use WP_Rocket\Addon\Varnish\ServiceProvider as VarnishServiceProvider;
 use WP_Rocket\Engine\Admin\Beacon\ServiceProvider as BeaconServiceProvider;
 use WP_Rocket\Engine\Admin\Database\ServiceProvider as AdminDatabaseServiceProvider;
@@ -37,7 +43,10 @@ use WP_Rocket\ServiceProvider\Options as OptionsServiceProvider;
 use WP_Rocket\ThirdParty\Hostings\ServiceProvider as HostingsServiceProvider;
 use WP_Rocket\ThirdParty\ServiceProvider as ThirdPartyServiceProvider;
 use WP_Rocket\ThirdParty\Themes\ServiceProvider as ThemesServiceProvider;
-
+use WP_Rocket\Engine\Admin\DomainChange\ServiceProvider as DomainChangeServiceProvider;
+use WP_Rocket\ThirdParty\Themes\ThemeResolver;
+use WP_Rocket\Engine\Debug\Resolver as DebugResolver;
+use WP_Rocket\Engine\Debug\ServiceProvider as DebugServiceProvider;
 /**
  * Plugin Manager.
  */
@@ -129,6 +138,13 @@ class Plugin {
 		$this->container->addServiceProvider( OptionsServiceProvider::class );
 		$this->options = $this->container->get( 'options' );
 
+		$this->container->add( 'debug_resolver', DebugResolver::class )
+			->addArgument( $this->options );
+
+		$this->container->addServiceProvider( LoggerServiceProvider::class );
+
+		$this->container->get( 'logger' );
+
 		$this->container->addServiceProvider( AdminDatabaseServiceProvider::class );
 		$this->container->addServiceProvider( SupportServiceProvider::class );
 		$this->container->addServiceProvider( BeaconServiceProvider::class );
@@ -191,6 +207,8 @@ class Plugin {
 		$this->container->addServiceProvider( SettingsServiceProvider::class );
 		$this->container->addServiceProvider( EngineAdminServiceProvider::class );
 		$this->container->addServiceProvider( OptimizationAdminServiceProvider::class );
+		$this->container->addServiceProvider( DomainChangeServiceProvider::class );
+		$this->container->addServiceProvider( AdminLazyloadCSSServiceProvider::class );
 
 		return [
 			'beacon',
@@ -212,6 +230,9 @@ class Plugin {
 			'minify_admin_subscriber',
 			'action_scheduler_check',
 			'actionscheduler_admin_subscriber',
+			'domain_change_subscriber',
+			'lazyload_css_admin_subscriber',
+			'post_edit_options_subscriber',
 		];
 	}
 
@@ -256,6 +277,7 @@ class Plugin {
 	private function init_common_subscribers() {
 		$this->container->addServiceProvider( CapabilitiesServiceProvider::class );
 		$this->container->addServiceProvider( AddonServiceProvider::class );
+
 		$this->container->addServiceProvider( VarnishServiceProvider::class );
 		$this->container->addServiceProvider( PreloadServiceProvider::class );
 		$this->container->addServiceProvider( PreloadLinksServiceProvider::class );
@@ -270,12 +292,18 @@ class Plugin {
 		$this->container->addServiceProvider( DynamicListsServiceProvider::class );
 		$this->container->addServiceProvider( LicenseServiceProvider::class );
 		$this->container->addServiceProvider( ThemesServiceProvider::class );
+		$this->container->addServiceProvider( APIServiceProvider::class );
+		$this->container->addServiceProvider( CommmonExtractCSSServiceProvider::class );
+		$this->container->addServiceProvider( LazyloadCSSServiceProvider::class );
+		$this->container->addServiceProvider( DebugServiceProvider::class );
 
 		$common_subscribers = [
 			'license_subscriber',
 			'cdn_subscriber',
+			'cdn_admin_subscriber',
 			'critical_css_subscriber',
 			'sucuri_subscriber',
+			'common_extractcss_subscriber',
 			'expired_cache_purge_subscriber',
 			'fonts_preload_subscriber',
 			'heartbeat_subscriber',
@@ -285,8 +313,6 @@ class Plugin {
 			'bigcommerce_subscriber',
 			'syntaxhighlighter_subscriber',
 			'elementor_subscriber',
-			'bridge_subscriber',
-			'avada_subscriber',
 			'ngg_subscriber',
 			'smush_subscriber',
 			'plugin_updater_common_subscriber',
@@ -304,18 +330,18 @@ class Plugin {
 			'pdfembedder',
 			'delay_js_admin_subscriber',
 			'rucss_admin_subscriber',
+			'rucss_option_subscriber',
 			'rucss_frontend_subscriber',
 			'rucss_cron_subscriber',
-			'divi',
 			'preload_subscriber',
 			'preload_front_subscriber',
-			'polygon',
 			'preload_links_admin_subscriber',
 			'preload_links_subscriber',
 			'preload_cron_subscriber',
 			'support_subscriber',
 			'mod_pagespeed',
 			'webp_subscriber',
+			'webp_admin_subscriber',
 			'imagify_webp_subscriber',
 			'shortpixel_webp_subscriber',
 			'ewww_webp_subscriber',
@@ -329,11 +355,8 @@ class Plugin {
 			'thirstyaffiliates',
 			'pwa',
 			'yoast_seo',
-			'flatsome',
-			'minimalist_blogger',
 			'convertplug',
 			'dynamic_lists_subscriber',
-			'jevelin',
 			'unlimited_elements',
 			'inline_related_posts',
 			'jetpack',
@@ -342,21 +365,46 @@ class Plugin {
 			'seopress',
 			'the_seo_framework',
 			'wpml',
-			'xstore',
 			'cloudflare_plugin_subscriber',
-			'uncode',
+			'cache_config',
 			'rocket_lazy_load',
+			'cache_config',
 			'the_events_calendar',
+			'admin_api_subscriber',
+			'perfmatters',
+			'rapidload',
+			'translatepress',
+			'wpgeotargeting',
+			'lazyload_css_subscriber',
+			'weglot',
+			'contactform7',
+			'debug_subscriber',
 		];
 
 		$host_type = HostResolver::get_host_service();
+		$theme     = ThemeResolver::get_current_theme();
 
 		if ( ! empty( $host_type ) ) {
 			$common_subscribers[] = $host_type;
 		}
 
+		if ( ! empty( $theme ) ) {
+			$common_subscribers[] = $theme;
+		}
+
 		if ( $this->options->get( 'do_cloudflare', false ) ) {
+			$this->container->addServiceProvider( CloudflareServiceProvider::class );
+
+			$common_subscribers[] = 'cloudflare_admin_subscriber';
 			$common_subscribers[] = 'cloudflare_subscriber';
+		}
+
+		$services = $this->container->get( 'debug_resolver' )->get_services();
+
+		if ( ! empty( $services ) ) {
+			foreach ( $services as $service ) {
+				$common_subscribers[] = $service['service'];
+			}
 		}
 
 		return $common_subscribers;
